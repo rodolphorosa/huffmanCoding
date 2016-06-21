@@ -5,6 +5,10 @@
  
 #define BYTES 256
 #define BITS_PER_CHAR 8
+#define DELIMITER 256
+
+int buffer = 0;
+int buffercount = 0;
 
 /*
 	** huffman_t huffman **
@@ -37,7 +41,7 @@ typedef struct huffman huffman_t;
 	Saida:
 		char* result	: concatenacao da string e o caracter 
 */
-static char *concat (char *prefix, char c); 
+static char *concat (char *prefix, char *c); 
 
 /*
 	** heapsort **
@@ -63,12 +67,12 @@ void heapsort (huffman_t *nodes[], int len);
 	O ultimo no a sair da lista e' a raiz da arvore. 
 
 	Paramtros:
-		long freqs[] 		: frequencia dos caracteres 
+		int freqs[] 		: frequencia dos caracteres 
 
 	Saida:
 		huffman_t heap[0] 	: raiz da arvore de Huffman 
 */
-huffman_t *create_huffman (long freqs[]); 
+huffman_t *create_huffman (int freqs[]); 
 
 /*
 	** create_table **
@@ -87,7 +91,7 @@ huffman_t *create_huffman (long freqs[]);
 void create_table (huffman_t *huff, char **table, char *prefix); 
 
 /*
-	** write_bits **
+	** write_byte **
 
 	Escreve no arquivo o codigo de um dado caracter. 
 	Dado o codigo de um caracter, normaliza a quantidade de bits deste 
@@ -95,12 +99,18 @@ void create_table (huffman_t *huff, char **table, char *prefix);
 
 	Parametros:
 		FILE *out 	: arquivo de saida (compatado)
-		char *code 	: codigo do caracter 
+		int bit 	: codigo do caracter 
 
 	Saida:
 		Codigo escrito no arquivo. 
 */
-void write_bits (FILE *out, char *code); 
+void write_byte (FILE *out, int bit); 
+
+void write_header (FILE *out, int freqs[]);
+
+int read_bit (FILE *in);
+
+char read_char (FILE *in, huffman_t *h); 
 
 /*
 	** encode **
@@ -164,16 +174,17 @@ int main ( int argc, char* argv[] )
 	out = fopen (output, "wb"); 
 
 	encode (in, out); 
+	// decode (in, out); 
 	fclose (in); 
 	fclose (out); 
 
 	return 0; 
 }
 
-static char *concat (char *prefix, char c) 
+static char *concat (char *prefix, char *c) 
 {
 	char *result = (char*) malloc (strlen(prefix) + sizeof(char));
-	sprintf (result, "%s%c", prefix, c);
+	sprintf (result, "%s%s", prefix, c);
 	return result;
 }
 
@@ -214,7 +225,7 @@ void heapsort (huffman_t *nodes[], int len)
 	}
 }
 
-huffman_t *create_huffman (long freqs[]) 
+huffman_t *create_huffman (int freqs[]) 
 {
 	huffman_t *heap[BYTES*2];
 	int len = 0, i;
@@ -233,7 +244,6 @@ huffman_t *create_huffman (long freqs[])
 		heapsort (heap, len); 
 
 		huffman_t *h = (huffman_t*) malloc (sizeof(huffman_t)); 
-		h->symbol 	= 256;
 		h->right 	= heap[--len]; 
 		h->left 	= heap[--len]; 
 		h->freq 	= h->left->freq + h->right->freq; 
@@ -249,32 +259,81 @@ void create_table (huffman_t *huff, char **table, char *prefix)
 	if (!huff->left && !huff->right) {
 		table[huff->symbol] = prefix;
 	} else {
-		if (huff->left) create_table (huff->left, table, concat (prefix, '0')); 
-		if (huff->right) create_table (huff->right, table, concat (prefix, '1')); 
+		if (huff->left) create_table (huff->left, table, concat (prefix, "0")); 
+		if (huff->right) create_table (huff->right, table, concat (prefix, "1")); 
 	}
 } 
 
-void write_bits (FILE *out, char *code) 
+void write_byte (FILE *out, int bit) 
 {
-	unsigned int bits = 0;
-	int bitcount = 0;
-
-	while (*code) {
-		bits = bits << 1 | *code;
-		bitcount++;
-
-		if (bitcount == BITS_PER_CHAR) {
-			fputc(bits, out);
-			bits = 0;
-			bitcount = 0;
-		}
-		code++;
-	}
+	/*
+		Faz shift a esquerda e recebe o bit. 
+	*/
+	buffer = (buffer << 1) | (bit == '1' ? 1 : 0);
+	buffercount++;
+		
+	if (buffercount == 8) {
+		fputc (buffer, out);
+		buffer = 0;
+		buffercount = 0;
+	} 
 } 
+
+void write_header (FILE *out, int freqs[])
+{
+	int i;
+	int charscount = 0;
+
+	for (i = 0; i < BYTES; ++i) {
+		if (freqs[i]) {
+			charscount++;
+		}
+	}
+
+	fprintf (out, "%d\n", charscount);
+
+	for (i = 0; i < BYTES; ++i) {
+		if (freqs[i]) {
+			fprintf (out, "%d %d\n", i, freqs[i]);
+		}
+	}
+}
+
+int read_bit (FILE *in) 
+{
+	if (buffercount == 0) {
+		buffer = fgetc (in);
+		if (buffer == EOF) return -1;
+		buffercount = BITS_PER_CHAR;
+	}
+
+	int mask = 1 << (buffercount - 1);
+	int nextbit = (buffer & mask) >> (buffercount - 1);
+	buffercount--;
+	return nextbit;
+}
+
+char read_char (FILE *in, huffman_t *h) 
+{	
+	while (h->left || h->right) {
+		if (!h) {
+			printf ("Error at reading file!");
+			exit (1);
+		}
+
+		if (read_bit (in) == '1') {
+			h = h->right;
+		} else {
+			h = h->left;
+		}
+	}
+	
+	return h->symbol;
+}
 
 void encode (FILE *in, FILE *out) 
 {
-	long freqs[BYTES]; 
+	int freqs[BYTES]; 
 
 	memset (freqs, 0, sizeof freqs); 
 
@@ -286,18 +345,45 @@ void encode (FILE *in, FILE *out)
 	huffman_t *h;
 	h = create_huffman (freqs); 
 
-	char *table[BYTES];
+	char *table[BYTES+1];
 	char *prefix = "0";
 	create_table (h, table, prefix); 
 
 	rewind (in);
 
+	write_header (out, freqs);
+
 	while ((character = fgetc(in))!=EOF) { 
-		write_bits (out, table[character]);
-	} 
+		char *code = table[character];
+		while (*code) {
+			write_byte (out, *code);
+			code++;
+		}		
+	}
+
+	buffer <<= (BITS_PER_CHAR - buffercount); 
+	fputc (buffer, out); 
+	buffer = 0;
+	buffercount = 0;
+
+	fputc (EOF, out);
 } 
 
 void decode (FILE *in, FILE *out) 
 {
+	int i, c, f;
+	int charscount; 	
+	int freqs[BYTES+1]; 
+	huffman_t *h;
 
+	fscanf (in, "%d", &charscount); 
+	
+	for (i = 0; i < charscount; ++i) {
+		fscanf (in, "%d %d", &c, &f);
+		freqs[c] = f;
+	}
+
+	fgetc (in); /* Elimina a quebra de linha. */
+
+	h = create_huffman (freqs); 
 }
