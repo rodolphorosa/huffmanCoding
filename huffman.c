@@ -6,10 +6,6 @@
 #define END_OF_FILE    256
 #define CHAR_BITS   8
 
-#ifndef percentage
-#define percentage(x, y) (100.0 * y)/x
-#endif
-
 char *table[CHAR_RANGE];
 int buffer = 0;
 int buffercount = 0;
@@ -39,6 +35,26 @@ char *concat (char *prefix, char c)
     char *result = (char*) malloc (strlen(prefix) + 2);
     sprintf(result, "%s%c", prefix, c);
     return result;
+}
+
+double compression_rate (int frequencies[])
+{
+    int nbytes = 0; /* Tamanho do arquivo original. */
+    int nbytes_compressed = 0; /* Tamanho do arquivo compactado. */
+
+    int i;
+    for (i = 0; i < CHAR_RANGE - 1; ++i) 
+    {
+        if (frequencies[i])
+        {
+            nbytes += frequencies[i];
+            nbytes_compressed += frequencies[i] * strlen(table[i]);
+        }
+    }
+    
+    nbytes_compressed /= 8;
+    double rate = ((double)((double) nbytes_compressed / (double) nbytes)) * 100.0;
+    return rate;
 }
 
 huffman_t *create_tree (int frequencies[])
@@ -123,7 +139,6 @@ void write_byte (FILE *out, const char *code)
 {    
     while(*code)
     {
-        //buffer = buffer * 2 + *code - '0';
         buffer = (buffer << 1) | ( *code == '1' ? 1 : 0);
         buffercount++;
         
@@ -212,6 +227,9 @@ void compress (FILE *in, FILE *out)
 
     write_byte (out, table[END_OF_FILE]); 
     write_byte (out, "0000000"); 
+
+    double c_rate = compression_rate (frequencies);
+    printf ("Compression ended with compression rate of %.2f %%.\n", c_rate);
 }
 
 void decompress (FILE *in, FILE *out)
@@ -228,6 +246,8 @@ void decompress (FILE *in, FILE *out)
 
     while ((c = read_char (in, h)) != END_OF_FILE)
         fputc (c, out);
+
+    printf ("Decompression ended.\n");
 }
 
 int main(int argc, char *argv[])
@@ -265,7 +285,7 @@ int main(int argc, char *argv[])
     char mode;
 
     printf("Press 'c' to compress or 'd' to decompress...\n");
-    printf("[c/d]:");
+    printf("[c/d]: ");
     scanf("%c", &mode);
 
     if (mode == 'c') compress (in, out); 
