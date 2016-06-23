@@ -328,7 +328,9 @@ huffman_t *create_tree (int frequencies[])
     {
         if(frequencies[i])
         {
-            huffman_t *node = (huffman_t *) calloc (1, sizeof(huffman_t));
+            huffman_t *node = (huffman_t *) malloc (sizeof(huffman_t));
+            node->left      = NULL;
+            node->right     = NULL;
             node->letter    = i;
             node->freq      = frequencies[i];
 
