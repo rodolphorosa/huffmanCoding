@@ -101,7 +101,7 @@ huffman_t *create_tree (int frequencies[]);
  *  Percorre a árvore de Huffman recursivamente. 
  *  Para cada nó, adiciona-se '0' ao prefixo caso este nó seja uma subárvore esquerda, 
  *  ou '1', se for subárvore direita. 
- *  Este procedimento é realizado até que se chegue a uma folha. 
+ *  Este procedimento é realizado até que se chegue a todas as folhas. 
  *  
  *  @param h Árvore de Huffman.
  *  @param table Tabela de códigos. 
@@ -109,15 +109,6 @@ huffman_t *create_tree (int frequencies[]);
  *  @return void
  */
 void searchtree(huffman_t *h, char **table, char *prefix);
-
-/** @brief Inicializa a tabela de códigos. 
- *  
- *  Cria uma árvore de Huffman e usa searchtree() para inicilizar a tabela. 
- *  
- *  @param frequencies Vetor de frequências.
- *  @return Tabela de códigos construída. 
- */
-char **begin_table (int frequencies[]);
 
 /** @brief Escreve o cabeçalho (header) do arquivo compactado. 
  *  
@@ -182,8 +173,8 @@ int read_char (FILE *in, huffman_t *h);
  *  
  *  Para cada caracter do arquivo de entrada, calcula sua frequência. 
  *  A partir das frequências, é gerada uma tabela de códigos. 
- *  Volta-se ao início do arquivo e, até que se chegue ao final do arquivo, 
- *  é escrita a codificação de cada carater. 
+ *  Volta-se ao início do arquivo e, até que se chegue ao final deste, 
+ *  é escrita a codificação de cada carater lido. 
  *  Ao final, escreve-se um código para marcar o final do arquivo compactado (END_OF_FILE) 
  *  e mais alguns bits são adicionados para preencher o buffer. 
  *  
@@ -301,8 +292,8 @@ char *concat (char *prefix, char c)
 
 double compression_rate (int frequencies[])
 {
-    int nbytes = 0; /* Tamanho do arquivo original. */
-    int nbytes_compressed = 0; /* Tamanho do arquivo compactado. */
+    int nbytes = 0; 
+    int nbytes_compressed = 0; 
 
     int i;
     for (i = 0; i < CHAR_RANGE - 1; ++i) 
@@ -368,17 +359,6 @@ void searchtree(huffman_t *h, char **table, char *prefix)
     }
 }
 
-char **begin_table (int frequencies[])
-{
-    char *prefix = (char*) malloc (sizeof(char));  
-    memset (prefix, 0, sizeof prefix); 
-    
-    huffman_t *h = create_tree (frequencies);
-    searchtree(h, table, prefix);
-    
-    return table;
-}
-
 void write_header (FILE *out, int freqs[])
 {
     int i;
@@ -401,12 +381,12 @@ void write_header (FILE *out, int freqs[])
 
 void write_byte (FILE *out, const char *code)
 {    
-    while(*code)
+    while (*code)
     {
         buffer = (buffer << 1) | ( *code == '1' ? 1 : 0);
         buffercount++;
         
-        if(buffercount == CHAR_BITS)
+        if (buffercount == CHAR_BITS) 
         {
             fputc (buffer, out);
             buffer = 0;
@@ -423,12 +403,18 @@ int *read_header (FILE *in)
     int i, count, letter, freq;
     
     if (fscanf(in, "%d", &count) != 1) 
-        printf ("Invalid input file.");
+    {
+        printf ("Invalid input file.\n");
+        exit (1);
+    }
     
     for (i = 0; i < count; ++i)
     {
-        if ((fscanf(in, "%d %d", &letter, &freq) != 2) || letter < 0 || letter >= CHAR_RANGE)
-            printf ("Invalid input file.");         
+        if ((fscanf(in, "%d %d", &letter, &freq) != 2) || letter < 0 || letter >= CHAR_RANGE) 
+        {
+            printf ("Invalid input file.\n");
+            exit (1);
+        }            
         frequencies[letter] = freq;
     }
 
@@ -459,7 +445,7 @@ int read_char (FILE *in, huffman_t *h)
         h = read_bit (in) ? h->right : h->left;
         
         if (!h)
-            printf ("Iinvalid input file.");
+            printf ("Invalid input file.\n");
     }
     
     return h->letter;
@@ -479,9 +465,16 @@ void compress (FILE *in, FILE *out)
     }
     
     frequencies[END_OF_FILE] = 1;
+
+    char *prefix = (char*) malloc (sizeof(char));  
+    memset (prefix, 0, sizeof prefix); 
+    
+    huffman_t *h = create_tree (frequencies);
+    
+    searchtree(h, table, prefix);
+
     rewind(in);
 
-    begin_table (frequencies);
     write_header (out, frequencies); 
     
     while ((c = fgetc(in)) != EOF) 
